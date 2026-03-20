@@ -1,0 +1,204 @@
+
+using Unity.Cinemachine;
+using UnityEngine;
+using UnityEngine.InputSystem;
+
+
+public class Move : MonoBehaviour
+{
+    
+    public Animator animator;
+    #region Components
+    Vector3 direction;
+    Transform cameraTransform;
+    CharacterController controller;
+    Rigidbody rb;
+    InputAction move;
+    #endregion
+
+    Vector3 input = new Vector3(0, 0, 0);
+    public LayerMask groundMask;
+    public bool flying;
+    public float gravity;
+    float targetHeight;
+    float verticalVelocity;
+    float currentHeight = 0f;
+    float timeFlying = 0f;
+
+
+    private void Awake()
+    {
+        //animator = GetComponent<Animator>();
+        gravity = 10f;
+        flying = false;
+        cameraTransform = Camera.main.transform;
+        controller = GetComponent<CharacterController>();
+        rb = GetComponent<Rigidbody>();
+        move = InputSystem.actions.FindAction("Move");
+        verticalVelocity = 31f;
+        targetHeight = 7f;
+    }
+    
+    //private void Update()
+    //{
+    //   MoveCharacter(4);
+        
+    //}
+    private void FixedUpdate()
+    {
+        MoveCharacterRB(4);
+    }
+    void MoveCharacterRB(float speed)
+    {
+        input.x = move.ReadValue<Vector2>().x;
+        input.z = move.ReadValue<Vector2>().y;
+        direction = SetDirection();
+        direction.x *= speed;
+        direction.z *= speed;
+        direction.y = rb.linearVelocity.y;
+        Turn(input);
+        rb.linearVelocity = direction;
+
+    }
+    public void MoveCharacter(float speed)
+    {
+
+        input.x = move.ReadValue<Vector2>().x;
+        input.z = move.ReadValue<Vector2>().y;
+        direction = SetDirection();
+        direction.x *= speed;
+        direction.z *= speed;
+        
+        if (!flying)
+        {
+          //  animator.SetBool("volando", false);
+            if (!controller.isGrounded)
+            {
+                direction.y -= gravity * (Time.deltaTime + timeFlying);
+                timeFlying += Time.deltaTime;
+            }
+            else
+            {
+                direction.y = 0;
+                timeFlying = 0f;
+            }
+        }
+        else
+        {
+         //   animator.SetBool("volando", true);
+            currentHeight = GetCurrentHeight();
+            float heightDifference = targetHeight - currentHeight;
+            direction.y = heightDifference * verticalVelocity * Time.deltaTime;
+
+        }
+
+        Turn(input);
+        controller.Move(direction * Time.deltaTime);
+        bool isMove = IsMoving();
+
+        //animator.SetBool("run", isMove);
+
+    }
+
+    float GetCurrentHeight()
+    {
+        Ray ray = new Ray(transform.position, Vector3.down);
+        if (Physics.Raycast(ray, out RaycastHit hitInfo, 100, groundMask))
+        {
+            return hitInfo.distance;
+        }
+        else { Debug.Log("no choco con nada"); }
+        return 100;
+    }
+    Vector3 SetDirection()
+    {
+        Vector3 inputDirection = new Vector3(input.x, 0, input.z).normalized;
+        if (cameraTransform != null)
+        {
+            Vector3 forward = cameraTransform.forward;
+            Vector3 right = cameraTransform.right;
+            forward.y = 0f;
+            right.y = 0f;
+
+            forward.Normalize();
+            right.Normalize();
+            return forward * inputDirection.z + right * inputDirection.x;
+        }
+        else
+        {
+            return inputDirection;
+        }
+    }
+
+    public bool IsMoving()
+    {
+        return input.x != 0 || input.z != 0;
+    }
+    void Turn(Vector3 input)
+    {
+        if (input.z != 0 || input.x != 0)
+        {
+            transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(direction), Time.deltaTime * 30);
+        }
+    }
+
+    public void TurnToMouse()
+    {
+        Vector3 lookDirection = GetLookDirection();
+
+        Vector3 flatLook = new Vector3(lookDirection.x, 0f, lookDirection.z);
+        if (flatLook.sqrMagnitude > 0.0001f)
+        {
+
+            transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(flatLook), Time.deltaTime * 30f);
+        }
+    }
+    
+    /// <summary>
+    /// Calculates a normalized horizontal direction vector from the object's position toward the current mouse
+    /// position.
+    /// </summary>
+    /// <remarks>The vertical component is ignored to ensure the direction is strictly horizontal. This method
+    /// is useful for orienting objects toward the mouse cursor in a 3D environment while maintaining their current
+    /// elevation.</remarks>
+    /// <returns>A normalized Vector3 representing the horizontal direction from the object to the mouse position. If the mouse
+    /// position is very close to the object's position, returns the object's current forward direction.</returns>
+    public Vector3 GetLookDirection()
+    {
+        Vector3 objective = MousePosition();
+        objective.y = transform.position.y;
+        Vector3 dir = (objective - transform.position);
+        dir.y = 0f;
+        if (dir.sqrMagnitude < 0.0001f)
+        {
+            return transform.forward;
+        }
+        return dir.normalized;
+    }
+
+    public Vector3 MousePosition()
+    {
+        Vector3 mousePos = new Vector2(0, 0);
+        Vector3 screenPos;
+        if (Mouse.current != null)
+        {
+            screenPos = Mouse.current.position.ReadValue();
+        }
+        else
+        {
+
+            screenPos = UnityEngine.Input.mousePosition;
+            Debug.Log("Using legacy input for mouse position");
+        }
+
+        Ray ray = Camera.main.ScreenPointToRay(new Vector3(screenPos.x, screenPos.y, 0));
+        if (Physics.Raycast(ray, out RaycastHit raycastHit, 1000, groundMask))
+        {
+            mousePos = raycastHit.point;
+
+        }
+
+        return mousePos;
+    }
+
+}
